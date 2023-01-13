@@ -29,3 +29,22 @@ CREATE TABLE IF NOT EXISTS "chat" (
 	"msg"	TEXT,
 	PRIMARY KEY("id" AUTOINCREMENT)
 );
+CREATE TABLE IF NOT EXISTS "rcon" (
+	"id"	INTEGER,
+	"timestamp"	INTEGER,
+	"server"	INTEGER,
+	"ip"	TEXT,
+	"limited"	INTEGER,
+	"invalid"	INTEGER,
+	"command"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);
+CREATE TABLE IF NOT EXISTS "chat_private" (
+	"id"	INTEGER,
+	"timestamp"	INTEGER,
+	"server"	INTEGER,
+	"name1"	TEXT,
+	"name2"	TEXT,
+	"msg"	TEXT,
+	PRIMARY KEY("id" AUTOINCREMENT)
+);

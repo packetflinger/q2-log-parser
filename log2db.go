@@ -15,6 +15,7 @@ import (
 )
 
 var (
+	DorkBusterIP  = "23.227.170.221"
 	Server        = flag.String("s", "", "The server we're working with. Required.")
 	Database      = flag.String("d", "q2logs.sqlite", "The SQLite3 database file")
 	Verbose       = flag.Bool("v", false, "Show more")
@@ -24,17 +25,30 @@ var (
 	Privs         = []PrivmsgEntry{}
 	Connects      = []ConnectEntry{}
 	Renames       = []RenameEntry{}
+	Rcons         = []RconEntry{}
 	ConnectRegexp = &regexp.Regexp{}
 	RenameRegexp  = &regexp.Regexp{}
 	PrivmsgRegexp = &regexp.Regexp{}
+	RconRegexp1   = &regexp.Regexp{}
+	RconRegexp2   = &regexp.Regexp{}
 	err           error
 	DB            *sql.DB
+	MidRcon       = false // still need to parse the rest of rcon command
 )
 
 type LogEntry struct {
 	Timestamp int64 // a unix timestamp
 	Context   string
 	Entry     string
+}
+
+// these are broken up into 2 consecutive log lines
+type RconEntry struct {
+	Timestamp int64
+	IP        string
+	Limited   bool
+	Invalid   bool
+	Command   string
 }
 
 type ChatLogEntry struct {
@@ -89,6 +103,11 @@ func main() {
 
 	// (name1)(private message to: name2) msg
 	PrivmsgRegexp, err = regexp.Compile(`^\((?P<name1>.+)\)\(private message to: (?P<name2>.+)\) (?P<msg>.+)$`)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	RconRegexp1, err = regexp.Compile(`(?P<invalid>Invalid)?\s?(?P<limited>[Ll]imited)?\s?rcon from (?P<ip>\d+\.\d+\.\d+\.\d+):\d+:$`)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -180,6 +199,15 @@ func main() {
 			}
 			total++
 		}
+
+		sql = "INSERT INTO rcon (timestamp, server, ip, limited, invalid, command) VALUES (?,?,?,?,?,?)"
+		for _, r := range Rcons {
+			_, err := DB.Exec(sql, r.Timestamp, sid, r.IP, r.Limited, r.Invalid, r.Command)
+			if err != nil {
+				log.Println(err)
+			}
+			total++
+		}
 		duration := time.Since(start)
 		CloseDatabase()
 
@@ -257,6 +285,20 @@ func LogDateToTimestamp(ts string) int64 {
 
 // this shoud only be for generic messages, type "A"
 func ParseEntry(e LogEntry) {
+	// continuation of rcon, it's a 2 liner
+	if MidRcon {
+		MidRcon = false
+		// remove TS rcon spam
+		if e.Entry == "status" {
+			if Rcons[len(Rcons)-1].IP == DorkBusterIP {
+				Rcons = Rcons[:len(Rcons)-1] // remove last element
+				return
+			}
+		}
+		Rcons[len(Rcons)-1].Command = e.Entry
+		return
+	}
+
 	if ConnectRegexp.Match([]byte(e.Entry)) {
 		result := ConnectRegexp.FindAllStringSubmatch(e.Entry, -1)
 		conn := ConnectEntry{
@@ -277,6 +319,19 @@ func ParseEntry(e LogEntry) {
 			Name2:     result[0][2],
 		}
 		Renames = append(Renames, conn)
+		return
+	}
+
+	if RconRegexp1.Match([]byte(e.Entry)) {
+		result := RconRegexp1.FindAllStringSubmatch(e.Entry, -1)
+		rcon := RconEntry{
+			Timestamp: e.Timestamp,
+			Invalid:   result[0][1] != "",
+			Limited:   result[0][2] != "",
+			IP:        result[0][3],
+		}
+		Rcons = append(Rcons, rcon)
+		MidRcon = true
 		return
 	}
 }
