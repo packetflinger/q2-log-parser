@@ -79,39 +79,6 @@ type RenameEntry struct {
 }
 
 func main() {
-	flag.Parse()
-	if *Logfile == "" {
-		flag.Usage()
-		os.Exit(0)
-	}
-	if *Server == "" {
-		flag.Usage()
-		os.Exit(0)
-	}
-
-	// name[1.1.1.1:22222]: q2pro version whatever
-	ConnectRegexp, err = regexp.Compile(`^(?P<name>.+)\[(?P<ip>\d+\.\d+\.\d+\.\d+):\d+\]: (?P<client>.+)$`)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// name1[1.1.1.1:22222] changed name to name2
-	RenameRegexp, err = regexp.Compile(`^(?P<name1>.+)\[.+:\d+\] changed name to (?P<name2>.+)$`)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// (name1)(private message to: name2) msg
-	PrivmsgRegexp, err = regexp.Compile(`^\((?P<name1>.+)\)\(private message to: (?P<name2>.+)\) (?P<msg>.+)$`)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	RconRegexp1, err = regexp.Compile(`(?P<invalid>Invalid)?\s?(?P<limited>[Ll]imited)?\s?rcon from (?P<ip>\d+\.\d+\.\d+\.\d+):\d+:$`)
-	if err != nil {
-		log.Fatal(err)
-	}
-
 	fp, err := os.Open(*Logfile)
 	if err != nil {
 		log.Fatal(err)
@@ -146,75 +113,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// actually insert into the database
-	if *Write {
-		total := 0
-
-		if *Verbose {
-			log.Println("Writing data")
-		}
-
-		OpenDatabase()
-		sid := GetServerID(*Server)
-
-		start := time.Now()
-		sql := "INSERT INTO connect (timestamp, server, name, ip, client) VALUES (?,?,?,?,?)"
-		for _, c := range Connects {
-			_, err := DB.Exec(sql, c.Timestamp, sid, c.Name, c.IP, c.Client)
-			if err != nil {
-				log.Println(err)
-			}
-			total++
-		}
-
-		team := 0
-		sql = "INSERT INTO chat (timestamp, server, name, team, msg) VALUES (?,?,?,?,?)"
-		for _, c := range Chats {
-			if c.Team {
-				team = 1
-			} else {
-				team = 0
-			}
-			_, err := DB.Exec(sql, c.Timestamp, sid, c.Name, team, c.Content)
-			if err != nil {
-				log.Println(err)
-			}
-			total++
-		}
-
-		sql = "INSERT INTO chat_private (timestamp, server, name1, name2, msg) VALUES (?,?,?,?,?)"
-		for _, pm := range Privs {
-			_, err := DB.Exec(sql, pm.Timestamp, sid, pm.Name1, pm.Name2, pm.Content)
-			if err != nil {
-				log.Println(err)
-			}
-			total++
-		}
-
-		sql = "INSERT INTO rename (timestamp, server, name1, name2) VALUES (?,?,?,?)"
-		for _, c := range Renames {
-			_, err := DB.Exec(sql, c.Timestamp, sid, c.Name1, c.Name2)
-			if err != nil {
-				log.Println(err)
-			}
-			total++
-		}
-
-		sql = "INSERT INTO rcon (timestamp, server, ip, limited, invalid, command) VALUES (?,?,?,?,?,?)"
-		for _, r := range Rcons {
-			_, err := DB.Exec(sql, r.Timestamp, sid, r.IP, r.Limited, r.Invalid, r.Command)
-			if err != nil {
-				log.Println(err)
-			}
-			total++
-		}
-		duration := time.Since(start)
-		CloseDatabase()
-
-		if *Verbose {
-			log.Println(total, "records written in", duration)
-		}
-	}
+	WriteToDatabase()
 }
 
 func ScanLine(line string) LogEntry {
@@ -377,4 +276,113 @@ func GetServerID(srv string) int {
 	}
 
 	return 0
+}
+
+func WriteToDatabase() {
+	// actually insert into the database
+	if !*Write {
+		return
+	}
+
+	total := 0
+
+	if *Verbose {
+		log.Println("Writing data")
+	}
+
+	OpenDatabase()
+	sid := GetServerID(*Server)
+
+	start := time.Now()
+	sql := "INSERT INTO connect (timestamp, server, name, ip, client) VALUES (?,?,?,?,?)"
+	for _, c := range Connects {
+		_, err := DB.Exec(sql, c.Timestamp, sid, c.Name, c.IP, c.Client)
+		if err != nil {
+			log.Println(err)
+		}
+		total++
+	}
+
+	team := 0
+	sql = "INSERT INTO chat (timestamp, server, name, team, msg) VALUES (?,?,?,?,?)"
+	for _, c := range Chats {
+		if c.Team {
+			team = 1
+		} else {
+			team = 0
+		}
+		_, err := DB.Exec(sql, c.Timestamp, sid, c.Name, team, c.Content)
+		if err != nil {
+			log.Println(err)
+		}
+		total++
+	}
+
+	sql = "INSERT INTO chat_private (timestamp, server, name1, name2, msg) VALUES (?,?,?,?,?)"
+	for _, pm := range Privs {
+		_, err := DB.Exec(sql, pm.Timestamp, sid, pm.Name1, pm.Name2, pm.Content)
+		if err != nil {
+			log.Println(err)
+		}
+		total++
+	}
+
+	sql = "INSERT INTO rename (timestamp, server, name1, name2) VALUES (?,?,?,?)"
+	for _, c := range Renames {
+		_, err := DB.Exec(sql, c.Timestamp, sid, c.Name1, c.Name2)
+		if err != nil {
+			log.Println(err)
+		}
+		total++
+	}
+
+	sql = "INSERT INTO rcon (timestamp, server, ip, limited, invalid, command) VALUES (?,?,?,?,?,?)"
+	for _, r := range Rcons {
+		_, err := DB.Exec(sql, r.Timestamp, sid, r.IP, r.Limited, r.Invalid, r.Command)
+		if err != nil {
+			log.Println(err)
+		}
+		total++
+	}
+	duration := time.Since(start)
+	CloseDatabase()
+
+	if *Verbose {
+		log.Println(total, "records written in", duration)
+	}
+}
+
+func init() {
+	flag.Parse()
+	if *Logfile == "" {
+		flag.Usage()
+		os.Exit(0)
+	}
+	if *Server == "" {
+		flag.Usage()
+		os.Exit(0)
+	}
+
+	// name[1.1.1.1:22222]: q2pro version whatever
+	ConnectRegexp, err = regexp.Compile(`^(?P<name>.+)\[(?P<ip>\d+\.\d+\.\d+\.\d+):\d+\]: (?P<client>.+)$`)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// name1[1.1.1.1:22222] changed name to name2
+	RenameRegexp, err = regexp.Compile(`^(?P<name1>.+)\[.+:\d+\] changed name to (?P<name2>.+)$`)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// (name1)(private message to: name2) msg
+	PrivmsgRegexp, err = regexp.Compile(`^\((?P<name1>.+)\)\(private message to: (?P<name2>.+)\) (?P<msg>.+)$`)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	RconRegexp1, err = regexp.Compile(`(?P<invalid>Invalid)?\s?(?P<limited>[Ll]imited)?\s?rcon from (?P<ip>\d+\.\d+\.\d+\.\d+):\d+:$`)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
