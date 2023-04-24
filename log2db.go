@@ -168,16 +168,7 @@ func LogDateToTimestamp(ts string) int64 {
 	mn, _ := strconv.Atoi(ts[11:13])
 	sc, _ := strconv.Atoi(ts[13:15])
 
-	timestamp := time.Date(
-		yr,
-		time.Month(mt),
-		dy,
-		hr,
-		mn,
-		sc,
-		0,
-		time.UTC,
-	)
+	timestamp := time.Date(yr, time.Month(mt), dy, hr, mn, sc, 0, time.UTC)
 
 	return timestamp.Unix()
 }
