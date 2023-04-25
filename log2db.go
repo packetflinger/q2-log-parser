@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"database/sql"
+	"errors"
 	"flag"
 	"log"
 	"os"
@@ -94,7 +95,13 @@ func main() {
 	start := time.Now()
 	parsed := 0
 	for scanner.Scan() {
-		entry := ScanLine(scanner.Text())
+		entry, err := ScanLine(scanner.Text())
+		if err != nil {
+			if *Verbose {
+				log.Println("scan error", err)
+			}
+			continue
+		}
 
 		switch entry.Context {
 		case "T":
@@ -116,7 +123,10 @@ func main() {
 	WriteToDatabase()
 }
 
-func ScanLine(line string) LogEntry {
+func ScanLine(line string) (LogEntry, error) {
+	if line == "" {
+		return LogEntry{}, errors.New("blank line")
+	}
 	tokens := strings.SplitN(line, " ", 3)
 	entry := LogEntry{
 		Timestamp: LogDateToTimestamp(tokens[0]),
@@ -124,7 +134,7 @@ func ScanLine(line string) LogEntry {
 		Entry:     tokens[2],
 	}
 
-	return entry
+	return entry, nil
 }
 
 func ParseChat(e LogEntry) {
@@ -161,6 +171,12 @@ func ParseChat(e LogEntry) {
 
 // this is gross but really the only way to do it
 func LogDateToTimestamp(ts string) int64 {
+	if len(ts) != 15 {
+		if *Verbose {
+			log.Println("invalid time string:", ts)
+		}
+		return time.Now().Unix()
+	}
 	yr, _ := strconv.Atoi(ts[0:4])
 	mt, _ := strconv.Atoi(ts[4:6])
 	dy, _ := strconv.Atoi(ts[6:8])
