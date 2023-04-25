@@ -106,7 +106,7 @@ func main() {
 	}
 	duration := time.Since(start)
 	if *Verbose {
-		log.Println(parsed, "log lines read in", duration)
+		log.Println(parsed, "log lines parsed in", duration)
 	}
 
 	if err := scanner.Err(); err != nil {
